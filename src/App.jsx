@@ -13,13 +13,13 @@ const App = () => {
     const [newCategory, setNewCategory] = useState('');
     const [formData, setFormData] = useState({
         publisher: '',
-        publisherImage: null,
+        publisherImage: '',
         date: '',
         isVerified: false,
         category: '',
         preferredSection: '',
         title: '',
-        thumbnail: null
+        thumbnailImage: ''
     });
     const [savedData, setSavedData] = useState(null);
     const [errors, setErrors] = useState({});
@@ -32,10 +32,10 @@ const App = () => {
     };
 
     const handleInputChange = (e) => {
-        const { id, value, type, checked, files, name } = e.target;
+        const { id, value, type, checked, name } = e.target;
         setFormData({
             ...formData,
-            [type === 'radio' ? name : id]: type === 'checkbox' ? checked : type === 'file' ? files[0] : value,
+            [type === 'radio' ? name : id]: type === 'checkbox' ? checked : value,
         });
         setErrors({
             ...errors,
@@ -79,7 +79,7 @@ const App = () => {
                     delimiter: Delimiter,
                 },
                 data: {
-                    time: 1552744582955,
+                    time: Date.now(),
                     blocks: [
                         {
                             type: "header",
@@ -95,34 +95,79 @@ const App = () => {
         }
     }, []);
 
-    const handleSave = () => {
+    const handleSave = async () => {
         const newErrors = {};
         if (!formData.publisher) newErrors.publisher = 'Publisher is required';
-        if (!formData.publisherImage) newErrors.publisherImage = 'Publisher image is required';
+        if (!formData.publisherImage) newErrors.publisherImage = 'Publisher image URL is required';
         if (!formData.date) newErrors.date = 'Date is required';
         if (!formData.category) newErrors.category = 'Category is required';
         if (!formData.title) newErrors.title = 'Title is required';
+        if (formData.thumbnailImageImage && !isValidUrl(formData.thumbnailImageImage)) newErrors.thumbnailImageImage = 'Invalid thumbnailImage URL';
 
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
             return;
         }
 
-        if (editorRef.current) {
-            editorRef.current.save().then((editorData) => {
-                setSavedData({
+        try {
+            // Save editor content
+            const editorData = await editorRef.current.save();
+            console.log('Editor Data:', editorData);
+
+            // Send data to API
+            const response = await fetch(`http://localhost:5000/api/v1/article/add`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
                     ...formData,
                     content: editorData
-                });
-                outputRef.current.innerHTML = JSON.stringify({
-                    ...formData,
-                    content: editorData
-                }, null, 4);
-            }).catch(error => {
-                console.error("Saving failed: ", error);
+                }),
             });
-        } else {
-            console.error("Editor reference is null.");
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('Result:', result);
+
+            // Update saved data state
+            setSavedData(result);
+
+            // Reset form state
+            setFormData({
+                publisher: '',
+                publisherImage: '',
+                date: '',
+                isVerified: false,
+                category: '',
+                preferredSection: '',
+                title: '',
+                thumbnailImageImage: ''
+            });
+            setCategories([]);
+            setNewCategory('');
+
+            // Clear editor
+            if (editorRef.current) {
+                editorRef.current.clear(); // Clear the editor's content
+            }
+            if (outputRef.current) {
+                outputRef.current.innerHTML = JSON.stringify(result, null, 4);
+            }
+        } catch (error) {
+            console.error("Error saving data:", error);
+        }
+    };
+
+    const isValidUrl = (url) => {
+        try {
+            new URL(url);
+            return true;
+        } catch {
+            return false;
         }
     };
 
@@ -140,9 +185,11 @@ const App = () => {
                 />
                 {errors.publisher && <p className="text-red-500">{errors.publisher}</p>}
                 <input
-                    type="file"
+                    type="text"
                     id="publisherImage"
                     className="border p-2"
+                    placeholder="Publisher image URL"
+                    value={formData.publisherImage}
                     onChange={handleInputChange}
                 />
                 {errors.publisherImage && <p className="text-red-500">{errors.publisherImage}</p>}
@@ -240,18 +287,6 @@ const App = () => {
                     />
                     <label htmlFor="section3">Section 3</label>
                 </div>
-                <div className="flex items-center">
-                    <input
-                        type="radio"
-                        id="section4"
-                        name="preferredSection"
-                        value="section4"
-                        className="mr-2"
-                        checked={formData.preferredSection === 'section4'}
-                        onChange={handleInputChange}
-                    />
-                    <label htmlFor="section4">Section 4</label>
-                </div>
             </div>
             <div className="mb-4">
                 <h2 className="text-xl mb-2">Title:</h2>
@@ -264,34 +299,29 @@ const App = () => {
                 />
                 {errors.title && <p className="text-red-500">{errors.title}</p>}
             </div>
-            <div>
-                <h2 className="text-xl mb-2">Thumbnail:</h2>
+            <div className="mb-4">
+                <h2 className="text-xl mb-2">thumbnail Image URL:</h2>
                 <input
-                    type="file"
-                    id="thumbnail"
-                    className="border p-2"
+                    type="text"
+                    id="thumbnailImage"
+                    className="border p-2 block w-full"
+                    placeholder="thumbnail image  URL"
+                    value={formData.thumbnailImage}
                     onChange={handleInputChange}
                 />
-                {errors.thumbnail && <p className="text-red-500">{errors.thumbnail}</p>}
+                {errors.thumbnailImage && <p className="text-red-500">{errors.thumbnailImage}</p>}
             </div>
-            <div className="mb-4">
-                <h2 className="text-xl mb-2">Content:</h2>
-            </div>
-            <div id="editorjs" className="border prose p-4 mb-4 overflow-hidden"></div>
-            <button onClick={handleSave} className="bg-blue-500 text-white p-2 rounded">Save</button>
-            <pre ref={outputRef} className="mt-4 p-4 border rounded bg-gray-100 overflow-hidden"></pre>
+            <div id="editorjs" className="mb-4"></div>
+            <button
+                onClick={handleSave}
+                className="bg-blue-500 text-white p-2 rounded"
+            >
+                Save
+            </button>
             {savedData && (
-                <div className="mt-4 p-4 border overflow-hidden">
+                <div className="mt-4">
                     <h2 className="text-xl mb-2">Saved Data:</h2>
-                    <p><strong>Publisher:</strong> {savedData.publisher}</p>
-                    <p><strong>Date:</strong> {savedData.date}</p>
-                    <p><strong>Is Verified:</strong> {savedData.isVerified ? 'Yes' : 'No'}</p>
-                    <p><strong>Category:</strong> {savedData.category}</p>
-                    <p><strong>Preferred Section:</strong> {savedData.preferredSection}</p>
-                    <p><strong>Title:</strong> {savedData.title}</p>
-                    <p><strong>Thumbnail:</strong> {savedData.thumbnail ? savedData.thumbnail.name : 'No file selected'}</p>
-                    <p><strong>Content:</strong></p>
-                    <pre>{JSON.stringify(savedData.content, null, 4)}</pre>
+                    <pre ref={outputRef} className="bg-gray-200 p-4 rounded">{JSON.stringify(savedData, null, 4)}</pre>
                 </div>
             )}
         </div>
